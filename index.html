@@ -1,0 +1,324 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Dudu vs Bubu - Atakum Sahili</title>
+<style>
+:root{--bg:#1a2634;--ink:#fff3f6}
+*{box-sizing:border-box}
+body{margin:0;min-height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center;background:var(--bg);color:var(--ink);font-family:"Trebuchet MS",system-ui,sans-serif;padding:8px}
+canvas{width:100%;max-width:960px;aspect-ratio:16/9;border:4px solid #ffffff;border-radius:14px;display:block;box-shadow: 0 12px 36px rgba(0,0,0,0.6);image-rendering: -webkit-optimize-contrast; image-rendering: crisp-edges;}
+p{margin:10px 0 0;font-size:14px;text-align:center;line-height:1.7;max-width:960px}
+b{color:#ffd23d}
+button{font:inherit;background:#ffd23d;border:0;border-radius:8px;padding:6px 14px;cursor:pointer;color:#1a2634;font-weight:bold}
+button:focus-visible{outline:3px solid #fff}
+body{touch-action:manipulation}
+#touch{display:none;width:100%;max-width:960px;justify-content:space-between;align-items:center;padding:14px 10px 6px;touch-action:none;user-select:none;-webkit-user-select:none;-webkit-touch-callout:none}
+#joy{position:relative;width:150px;height:150px;border-radius:50%;background:rgba(255,243,246,.15);border:3px solid var(--ink);touch-action:none}
+#knob{position:absolute;left:50%;top:50%;width:64px;height:64px;margin:-32px 0 0 -32px;border-radius:50%;background:var(--ink);opacity:.85}
+#btns{display:grid;grid-template-columns:auto auto;gap:12px}
+#btns button{width:84px;height:84px;border-radius:50%;font-size:15px;touch-action:none}
+#btns button.on{transform:scale(.92);background:#fff}
+#btns button.rdy{background:#7fd1ff;box-shadow:0 0 0 4px #fff}
+@media (hover:none) and (pointer:coarse){#touch{display:flex}.kb{display:none}}
+</style>
+</head>
+<body>
+<canvas id="c" width="1920" height="1080"></canvas>
+<p class="kb"><b>Dudu (Oyuncu 1):</b> A/D yürü, W zıpla, S blok, F yumruk, G tekme, H özel güç (Kaptan Çapası)<br>
+<b>Bubu (Oyuncu 2):</b> ←/→ yürü, ↑ zıpla, ↓ blok, K yumruk, L tekme, J özel güç (Ağlama Tsunamisi)<br>
+Özel güç barı vuruş yedikçe ve vurdukça dolar. Dolunca özel gücü kullan.</p>
+<div id="touch"><div id="joy"><div id="knob"></div></div><div id="btns"><button data-k="KeyF">Yumruk</button><button data-k="KeyG">Tekme</button><button data-k="KeyS">Blok</button><button data-k="KeyH">Özel</button></div></div>
+<p><button id="cpu">Oyuncu 2: İnsan</button> <button id="rst">Yeniden başla (Enter)</button></p>
+<script>
+const spBtn=document.querySelector('[data-k=KeyH]');
+const joy=document.getElementById('joy'),knob=document.getElementById('knob');let jid=null;
+function jset(e){const r=joy.getBoundingClientRect();let dx=(e.clientX-r.left-r.width/2)/(r.width/2),dy=(e.clientY-r.top-r.height/2)/(r.height/2);const l=Math.hypot(dx,dy);if(l>1){dx/=l;dy/=l}
+  knob.style.transform='translate('+dx*45+'px,'+dy*45+'px)';keys.KeyA=dx<-.35;keys.KeyD=dx>.35;keys.KeyW=dy<-.55;keys.KeyS=dy>.55}
+joy.addEventListener('pointerdown',e=>{jid=e.pointerId;joy.setPointerCapture(jid);jset(e)});
+joy.addEventListener('pointermove',e=>{if(e.pointerId===jid)jset(e)});
+const jend=e=>{if(e.pointerId===jid){jid=null;knob.style.transform='';keys.KeyA=keys.KeyD=keys.KeyW=keys.KeyS=false}};
+joy.addEventListener('pointerup',jend);joy.addEventListener('pointercancel',jend);
+document.querySelectorAll('#btns button').forEach(bt=>{const k=bt.dataset.k,up=()=>{keys[k]=false;bt.classList.remove('on')};
+  bt.addEventListener('pointerdown',e=>{e.preventDefault();keys[k]=true;bt.classList.add('on')});
+  bt.addEventListener('pointerup',up);bt.addEventListener('pointercancel',up);bt.addEventListener('pointerleave',up)});
+document.addEventListener('contextmenu',e=>e.preventDefault());
+
+const cv=document.getElementById('c'),g=cv.getContext('2d'),W=960,H=540,GY=450,DS=2.4;
+const RES=2;cv.width=W*RES;cv.height=H*RES;
+g.scale(RES, RES);
+g.imageSmoothingEnabled = true;
+g.imageSmoothingQuality = 'high';
+
+const keys={};let cpu=matchMedia('(hover:none) and (pointer:coarse)').matches,fr=0,shake=0,over=false;
+let round=1,msg='',msgT=0;
+
+// Arka Plan Görseli Entegrasyonu (Samsun Atakum Sahili)
+const bgImg = new Image();
+bgImg.src = 'https://images.unsplash.com/photo-1507525428034-b723cf961d3e?auto=format&fit=crop&w=1200&q=80';
+
+// Karakter Spritelari
+const sheet=new Image(), sheet2=new Image();
+sheet.src = 'sprite1.png';
+sheet2.src = 'sprite2.png';
+
+const FR={"dudu":{"idle":[[39,27,49,76,24.5,74],[132,26,51,77,25.5,75],[225,26,52,77,26.0,75],[319,26,52,77,26.0,75],[414,26,51,77,25.5,75]],"walk":[[40,120,49,73,24.5,71],[135,118,48,77,24.0,75],[228,118,49,78,24.5,76],[320,119,50,77,25.0,75],[417,119,48,77,24.0,75]],"punch":[[41,211,47,68,25.0,66],[135,206,51,76,25.0,74],[228,207,53,75,25.0,73],[322,207,53,75,25.0,73],[417,206,56,75,25.0,73]],"kick":[[41,296,47,68,25.0,66],[132,288,48,77,25.0,75],[222,287,56,78,25.0,76],[315,287,57,78,25.0,76],[410,287,58,78,25.0,76]],"block":[[132,370,46,71,23.0,69],[231,369,47,72,23.5,70],[323,369,56,74,28.0,72]],"hurt":[[123,440,51,72,25.5,70],[202,440,58,72,29.0,70],[277,439,75,73,37.5,71],[381,439,77,73,38.5,71]],"ko":[[101,520,78,47,39.0,45],[194,514,78,53,39.0,51],[291,515,83,53,41.5,51],[395,518,89,51,44.5,49]]},"bubu":{"idle":[[551,32,51,71,25.5,69],[647,32,50,71,25.0,69],[741,32,51,71,25.5,69],[837,32,50,71,25.0,69],[932,32,51,71,25.5,69]],"walk":[[552,124,49,69,24.5,67],[648,124,49,72,24.5,70],[742,124,49,72,24.5,70],[837,124,50,72,25.0,70],[933,124,49,72,24.5,70]],"punch":[[552,213,54,65,25.0,63],[648,213,54,68,25.0,66],[743,213,55,68,25.0,66],[838,213,54,69,25.0,67],[933,213,54,68,25.0,66]],"kick":[[552,298,48,66,25.0,64],[648,296,52,70,25.0,68],[742,295,53,71,25.0,69],[837,295,53,71,25.0,69],[932,296,48,70,25.0,68]],"block":[[654,376,47,66,23.5,64],[750,375,47,67,23.5,65],[845,374,47,67,23.5,65]],"hurt":[[636,441,60,71,30.0,69],[721,440,62,72,31.0,70],[814,444,86,67,43.0,65]],"ko":[[560,522,84,47,42.0,45],[670,515,84,52,42.0,50],[781,517,85,51,42.5,49],[900,523,83,46,41.5,44]]}};
+
+class Char {
+  constructor(x, id, type, sheetImg) {
+    this.x = x; this.y = GY; this.vx = 0; this.vy = 0;
+    this.id = id; this.type = type; this.img = sheetImg;
+    this.hp = 100; this.sp = 0; this.st = "idle";
+    this.f = 0; this.dir = id===1?1:-1; this.ground = true;
+    this.atkHit = false;
+  }
+
+  update(opp) {
+    if (this.st === "ko") return;
+    
+    // Yön belirleme
+    if (this.st === "idle" || this.st === "walk") {
+      this.dir = this.x < opp.x ? 1 : -1;
+    }
+
+    // Yerçekimi & Hareket
+    this.vy += 0.8;
+    this.y += this.vy;
+    this.x += this.vx;
+
+    if (this.y >= GY) {
+      this.y = GY;
+      this.vy = 0;
+      this.ground = true;
+    }
+
+    this.x = Math.max(50, Math.min(W - 50, this.x));
+
+    // Atak Vuruş Alanı (Hitbox) & Menzil Kontrolü
+    const dist = Math.abs(this.x - opp.x);
+    const attackRange = 120; // Yakın dövüş mesafesi sınırı
+
+    if ((this.st === "punch" || this.st === "kick") && !this.atkHit) {
+      if (dist <= attackRange) {
+        // Rakip yeterince yakınsa darbe vurabilir!
+        if (opp.st !== "block") {
+          opp.hp -= (this.st === "punch" ? 8 : 12);
+          opp.st = "hurt";
+          opp.f = 0;
+          this.sp = Math.min(100, this.sp + 15);
+          shake = 6;
+        } else {
+          opp.hp -= 2; // Bloklanırsa az hasar
+        }
+        this.atkHit = true;
+      }
+    }
+
+    // Animasyon döngüleri
+    this.f += 0.2;
+    const frames = FR[this.type][this.st] || FR[this.type]["idle"];
+    if (Math.floor(this.f) >= frames.length) {
+      if (this.st === "punch" || this.st === "kick" || this.st === "hurt") {
+        this.st = "idle";
+        this.atkHit = false;
+      }
+      this.f = 0;
+    }
+
+    if (this.hp <= 0) {
+      this.hp = 0;
+      this.st = "ko";
+      over = true;
+    }
+  }
+
+  draw() {
+    const frames = FR[this.type][this.st] || FR[this.type]["idle"];
+    const idx = Math.floor(this.f) % frames.length;
+    const [sx, sy, sw, sh, ox, oy] = frames[idx];
+
+    g.save();
+    g.translate(this.x, this.y);
+
+    // 3D efekti ve Gölge Verme (Daha Net & Kabarık Karakter)
+    g.shadowColor = 'rgba(0, 0, 0, 0.4)';
+    g.shadowBlur = 10;
+    g.shadowOffsetY = 15;
+
+    if (this.dir === -1) g.scale(-1, 1);
+
+    // Spriteları Ölçeklendirerek Net Çizim Yapma
+    g.drawImage(this.img, sx, sy, sw, sh, -ox * DS, -oy * DS, sw * DS, sh * DS);
+
+    // Karakter Kenar Çizgileri ve Dış Işıklama (Hacim İllüzyonu)
+    g.restore();
+  }
+}
+
+let a = new Char(250, 1, "dudu", sheet);
+let b = new Char(710, 2, "bubu", sheet2);
+
+addEventListener('keydown',e=>{keys[e.code]=true;if(/Arrow|Space/.test(e.code))e.preventDefault();if(e.code==='Enter')full()});
+addEventListener('keyup',e=>keys[e.code]=false);
+
+document.getElementById('cpu').onclick=e=>{cpu=!cpu;e.target.textContent='Oyuncu 2: '+(cpu?'Bilgisayar':'İnsan');full()};
+document.getElementById('rst').onclick=()=>full();
+
+function full() {
+  a = new Char(250, 1, "dudu", sheet);
+  b = new Char(710, 2, "bubu", sheet2);
+  over = false;
+}
+
+function handleInput() {
+  if (over) return;
+
+  // P1 kontrolleri
+  if (keys.KeyA) { a.vx = -4; if(a.ground) a.st = "walk"; }
+  else if (keys.KeyD) { a.vx = 4; if(a.ground) a.st = "walk"; }
+  else { a.vx = 0; if(a.ground && a.st==="walk") a.st = "idle"; }
+
+  if (keys.KeyW && a.ground) { a.vy = -14; a.ground = false; }
+  if (keys.KeyS) { a.st = "block"; }
+  if (keys.KeyF && a.st !== "punch") { a.st = "punch"; a.f = 0; a.atkHit = false; }
+  if (keys.KeyG && a.st !== "kick") { a.st = "kick"; a.f = 0; a.atkHit = false; }
+
+  // P2 Kontrolleri veya AI
+  if (!cpu) {
+    if (keys.ArrowLeft) { b.vx = -4; if(b.ground) b.st = "walk"; }
+    else if (keys.ArrowRight) { b.vx = 4; if(b.ground) b.st = "walk"; }
+    else { b.vx = 0; if(b.ground && b.st==="walk") b.st = "idle"; }
+
+    if (keys.ArrowUp && b.ground) { b.vy = -14; b.ground = false; }
+    if (keys.ArrowDown) { b.st = "block"; }
+    if (keys.KeyK && b.st !== "punch") { b.st = "punch"; b.f = 0; b.atkHit = false; }
+    if (keys.KeyL && b.st !== "kick") { b.st = "kick"; b.f = 0; b.atkHit = false; }
+  } else {
+    // Basit Yapay Zeka (CPU)
+    const dist = Math.abs(a.x - b.x);
+    if (dist > 90) {
+      b.vx = a.x < b.x ? -2.5 : 2.5;
+      b.st = "walk";
+    } else {
+      b.vx = 0;
+      if (Math.random() < 0.03) { b.st = "punch"; b.f = 0; b.atkHit = false; }
+      else if (Math.random() < 0.02) { b.st = "kick"; b.f = 0; b.atkHit = false; }
+    }
+  }
+}
+
+function drawBackground() {
+  // 1. Gerçekçi Atakum Sahili Arka Planı
+  if (bgImg.complete && bgImg.naturalWidth !== 0) {
+    g.drawImage(bgImg, 0, 0, W, H);
+  } else {
+    g.fillStyle = "#87ceeb";
+    g.fillRect(0,0,W,H);
+  }
+
+  // Sahil Deniz Detayı (Atakum Sahili Esintisi)
+  g.fillStyle = "rgba(0, 105, 148, 0.4)";
+  g.fillRect(0, H*0.55, W, H*0.2);
+
+  // 2. Arka Plan Nesnesi - Gemi (Karadeniz Seyri)
+  g.save();
+  g.fillStyle = "#2c3e50";
+  // Gemi Gövdesi
+  g.beginPath();
+  g.moveTo(550, 310);
+  g.lineTo(670, 310);
+  g.lineTo(650, 330);
+  g.lineTo(560, 330);
+  g.closePath();
+  g.fill();
+  // Gemi Üst Yapısı
+  g.fillStyle = "#ecf0f1";
+  g.fillRect(620, 290, 25, 20);
+  g.fillStyle = "#e74c3c";
+  g.fillRect(630, 280, 6, 10);
+  g.restore();
+
+  // 3. Arka Plan Nesnesi - Atakum Hastane Binası Detayı
+  g.save();
+  g.fillStyle = "rgba(230, 235, 240, 0.85)";
+  g.fillRect(100, 210, 130, 120);
+  // Hastane Pencereleri
+  g.fillStyle = "#34495e";
+  for(let i=0; i<3; i++) {
+    for(let j=0; j<4; j++) {
+      g.fillRect(115 + j*25, 225 + i*25, 12, 15);
+    }
+  }
+  // Kırmızı Medikal Haç Sembolü (Hastane)
+  g.fillStyle = "#d63031";
+  g.fillRect(158, 215, 14, 4);
+  g.fillRect(163, 210, 4, 14);
+  g.restore();
+
+  // Zemin (Atakum Sahil Yürüyüş Yolu / Kum)
+  g.fillStyle = "#e6c280";
+  g.fillRect(0, GY, W, H - GY);
+  g.fillStyle = "#303952";
+  g.fillRect(0, GY, W, 8); // Yol Çizgisi
+}
+
+function drawUI() {
+  // Can Barları
+  g.fillStyle = "rgba(0,0,0,0.5)";
+  g.fillRect(30, 30, 350, 25);
+  g.fillRect(580, 30, 350, 25);
+
+  g.fillStyle = "#e74c3c";
+  g.fillRect(30, 30, (a.hp/100)*350, 25);
+  g.fillRect(580 + (350 - (b.hp/100)*350), 30, (b.hp/100)*350, 25);
+
+  // İsimler
+  g.fillStyle = "#fff";
+  g.font = "bold 18px sans-serif";
+  g.fillText("DUDU", 30, 22);
+  g.fillText("BUBU", 880, 22);
+
+  if (over) {
+    g.fillStyle = "rgba(0,0,0,0.7)";
+    g.fillRect(0, 0, W, H);
+    g.fillStyle = "#ffd23d";
+    g.font = "bold 48px sans-serif";
+    g.textAlign = "center";
+    g.fillText(a.hp > 0 ? "DUDU KAZANDI!" : "BUBU KAZANDI!", W/2, H/2);
+    g.textAlign = "start";
+  }
+}
+
+function loop() {
+  handleInput();
+
+  a.update(b);
+  b.update(a);
+
+  g.clearRect(0,0,W,H);
+
+  g.save();
+  if (shake > 0) {
+    g.translate((Math.random()-0.5)*shake, (Math.random()-0.5)*shake);
+    shake *= 0.9;
+    if(shake < 0.5) shake = 0;
+  }
+
+  drawBackground();
+
+  // 3D Derinliği için Z-Index Sıralaması
+  if (a.y > b.y) { b.draw(); a.draw(); }
+  else { a.draw(); b.draw(); }
+
+  g.restore();
+
+  drawUI();
+
+  requestAnimationFrame(loop);
+}
+
+sheet.onload = () => { loop(); };
+</script>
+</body>
+</html>
